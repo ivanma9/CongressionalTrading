@@ -7,7 +7,7 @@ import re
 # --- Compiled regex patterns ---
 
 TICKER_PATTERN = re.compile(r'\(([A-Z]{1,5})\)')
-ASSET_TYPE_PATTERN = re.compile(r'\[(ST|OP|EF|DC|UT|AH|OT)\]')
+ASSET_TYPE_PATTERN = re.compile(r'\[([A-Z]{2})\]')
 PARTIAL_SALE_PATTERN = re.compile(r'S\s*\(partial\)')
 DATE_PATTERN = re.compile(r'(\d{2}/\d{2}/\d{4})')
 AMOUNT_PATTERN = re.compile(r'\$([0-9,]+)\s*-?\s*\$([0-9,]+)')

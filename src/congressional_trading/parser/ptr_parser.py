@@ -271,7 +271,13 @@ def _extract_asset_description(full_data: str, ticker_match, asset_type_match) -
         desc = parts[0].strip() if parts else None
         return desc
 
-    # Clean up whitespace
+    # Clean up: remove leaked dates, amounts, and transaction types
+    # These leak in when the asset name spans multiple lines and gets
+    # joined with data from other columns
+    desc = re.sub(r'\s*\d{2}/\d{2}/\d{4}.*', '', desc)
+    desc = re.sub(r'\s*\$[0-9,]+.*', '', desc)
+    # Remove trailing standalone P/S/E (transaction type that leaked in)
+    desc = re.sub(r'\s+[PSE]$', '', desc)
     desc = re.sub(r'\s+', ' ', desc).strip()
     return desc if desc else None
 
@@ -300,6 +306,13 @@ def _extract_transaction_type(full_data: str) -> Optional[str]:
 
     # P/S/E after ticker closing paren: "(SCHW) P       12/14/2023"
     tx_match = re.search(r'\)\s+(P|S|E)\s{2,}', region)
+    if tx_match:
+        return TRANSACTION_TYPE_MAP.get(tx_match.group(1))
+
+    # P/S/E followed by a large whitespace gap (column separator)
+    # Handles cases where transaction type has minimal left spacing
+    # but clear column gap to the right (e.g., "buffer P          12/30/2025")
+    tx_match = re.search(r'\s(P|S|E)\s{4,}', region)
     if tx_match:
         return TRANSACTION_TYPE_MAP.get(tx_match.group(1))
 
