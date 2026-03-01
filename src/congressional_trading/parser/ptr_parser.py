@@ -10,6 +10,7 @@ from typing import Optional
 from .patterns import (
     AMOUNT_OVER_PATTERN,
     AMOUNT_PATTERN,
+    AMOUNT_RANGES,
     ASSET_TYPE_PATTERN,
     DATE_PATTERN,
     OWNER_MAP,
@@ -42,8 +43,11 @@ def parse_ptr_text(text: str) -> list[dict]:
     Returns:
         List of trade dicts with keys: ticker, asset_description, asset_type,
         transaction_type, owner, transaction_date, notification_date,
-        amount_min, amount_max, description, cap_gains_over_200k.
+        amount_range_low, amount_range_high, description, cap_gains_over_200.
     """
+    # Strip form-feed characters from multi-page PDF output
+    text = text.replace('\x0c', '')
+
     blocks = _split_transaction_blocks(text)
     trades = []
     for block in blocks:
@@ -164,8 +168,14 @@ def _parse_block(block: str) -> Optional[dict]:
     transaction_date = _convert_date(dates[0]) if len(dates) >= 1 else None
     notification_date = _convert_date(dates[1]) if len(dates) >= 2 else None
 
+    # Validate date ordering
+    _validate_date_order(transaction_date, notification_date, ticker)
+
     # Amount
     amount_range_low, amount_range_high = _extract_amount(full_data)
+
+    # Validate amount bracket
+    _validate_amount_bracket(amount_range_low, amount_range_high, ticker)
 
     # Description from metadata lines
     description = _extract_description(meta_lines)
@@ -199,6 +209,40 @@ def _convert_date(date_str: str) -> str | None:
     except ValueError:
         logger.warning("Invalid date: %s", date_str)
         return None
+
+
+def _validate_date_order(
+    transaction_date: str | None,
+    notification_date: str | None,
+    ticker: str | None,
+) -> None:
+    """Log warning if transaction_date > notification_date."""
+    if transaction_date and notification_date and transaction_date > notification_date:
+        logger.warning(
+            "Transaction date %s is after notification date %s for ticker %s",
+            transaction_date,
+            notification_date,
+            ticker,
+        )
+
+
+def _validate_amount_bracket(
+    low: int | None,
+    high: int | None,
+    ticker: str | None,
+) -> None:
+    """Log warning if amount range doesn't match a known bracket."""
+    if low is None:
+        return
+    for bracket_low, bracket_high in AMOUNT_RANGES:
+        if low == bracket_low and high == bracket_high:
+            return
+    logger.warning(
+        "Unknown amount bracket $%s - $%s for ticker %s",
+        f"{low:,}" if low else "?",
+        f"{high:,}" if high else "None",
+        ticker,
+    )
 
 
 def _extract_asset_description(full_data: str, ticker_match, asset_type_match) -> Optional[str]:
@@ -250,7 +294,6 @@ def _extract_transaction_type(full_data: str) -> Optional[str]:
     region = full_data[:date_match.start()]
 
     # The transaction type is a standalone P/S/E surrounded by multiple spaces
-    # Use a pattern that requires at least 2 spaces on each side
     tx_match = re.search(r'\s{2,}(P|S|E)\s{2,}', region)
     if tx_match:
         return TRANSACTION_TYPE_MAP.get(tx_match.group(1))
@@ -294,7 +337,6 @@ def _extract_amount(full_data: str) -> tuple[Optional[int], Optional[int]]:
 
     # Handle split amounts: "$50,001 -" on one line, "$100,000" on next
     # The full_data has them joined with spaces
-    # Try to find "$X - " followed later by "$Y"
     split_match = re.search(r'\$([0-9,]+)\s*-\s+.*?\$([0-9,]+)', full_data)
     if split_match:
         low = int(split_match.group(1).replace(',', ''))

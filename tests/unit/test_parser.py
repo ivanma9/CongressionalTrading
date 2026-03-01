@@ -1,10 +1,26 @@
 """Tests for the PTR PDF text parser using real PDF text fixtures."""
 
+import logging
 from pathlib import Path
 
 from congressional_trading.parser import parse_ptr_text
 
 FIXTURES = Path(__file__).parent.parent / 'fixtures'
+
+# Helper to build synthetic PTR text for edge case tests
+_HEADER = (
+    'ID         Owner Asset                                            '
+    'Transaction Date                 Notification Amount\n'
+    '                                                                  '
+    'Type                             Date\n'
+    '                                                                  '
+    '\n'
+)
+
+
+def _make_ptr(body: str) -> str:
+    """Wrap transaction body lines in a valid PTR text structure."""
+    return _HEADER + body + '\n\n* For the complete list\n'
 
 
 def _load_fixture(name: str) -> str:
@@ -187,30 +203,13 @@ class TestEdgeCases:
         assert parse_ptr_text(text) == []
 
     def test_header_only(self):
-        text = (
-            'ID         Owner Asset                                            '
-            'Transaction Date                 Notification Amount\n'
-            '                                                                  '
-            'Type                             Date\n'
-            '                                                                  '
-            '\n'
-            '* For the complete list\n'
-        )
-        assert parse_ptr_text(text) == []
+        assert parse_ptr_text(_HEADER + '* For the complete list\n') == []
 
     def test_missing_ticker(self):
         """Transaction with no ticker should still parse with ticker=None."""
-        text = (
-            'ID         Owner Asset                                            '
-            'Transaction Date                 Notification Amount\n'
-            '                                                                  '
-            'Type                             Date\n'
-            '                                                                  '
-            '\n'
+        text = _make_ptr(
             '                       Some Municipal Bond [OT]                   '
-            'P                 01/15/2024 02/01/2024             $1,001 - $15,000\n'
-            '\n'
-            '* For the complete list\n'
+            'P                 01/15/2024 02/01/2024             $1,001 - $15,000'
         )
         trades = parse_ptr_text(text)
         assert len(trades) == 1
@@ -219,20 +218,203 @@ class TestEdgeCases:
         assert trades[0]['transaction_type'] == 'purchase'
 
     def test_amount_range_parsing(self):
-        """Various amount range formats."""
-        text = (
-            'ID         Owner Asset                                            '
-            'Transaction Date                 Notification Amount\n'
-            '                                                                  '
-            'Type                             Date\n'
-            '                                                                  '
-            '\n'
+        text = _make_ptr(
             '                       Test Corp (TST) [ST]                       '
-            'P                 01/15/2024 02/01/2024             $1,001 - $15,000\n'
-            '\n'
-            '* For the complete list\n'
+            'P                 01/15/2024 02/01/2024             $1,001 - $15,000'
         )
         trades = parse_ptr_text(text)
         assert len(trades) == 1
         assert trades[0]['amount_range_low'] == 1_001
         assert trades[0]['amount_range_high'] == 15_000
+
+
+# ---------------------------------------------------------------------------
+# "Over $X" amount pattern
+# ---------------------------------------------------------------------------
+
+class TestOverAmount:
+    """Over $50,000,000 → (50_000_001, None)."""
+
+    def test_over_50m(self):
+        text = _make_ptr(
+            '                       Big Corp (BIG) [ST]                        '
+            'P                 01/15/2024 02/01/2024         Over $50,000,000'
+        )
+        trades = parse_ptr_text(text)
+        assert len(trades) == 1
+        assert trades[0]['amount_range_low'] == 50_000_001
+        assert trades[0]['amount_range_high'] is None
+
+    def test_over_1m(self):
+        text = _make_ptr(
+            '                       Mid Corp (MID) [ST]                        '
+            'S                 03/10/2024 04/01/2024         Over $1,000,000'
+        )
+        trades = parse_ptr_text(text)
+        assert len(trades) == 1
+        assert trades[0]['amount_range_low'] == 1_000_001
+        assert trades[0]['amount_range_high'] is None
+
+
+# ---------------------------------------------------------------------------
+# Cap gains > $200k
+# ---------------------------------------------------------------------------
+
+class TestCapGains:
+    """Capital gains > $200k field extraction."""
+
+    def test_cap_gains_yes(self):
+        text = _make_ptr(
+            '                       Gain Corp (GAIN) [ST]                      '
+            'S                 01/15/2024 02/01/2024             $1,001 - $15,000        Yes'
+        )
+        trades = parse_ptr_text(text)
+        assert len(trades) == 1
+        assert trades[0]['cap_gains_over_200'] is True
+
+    def test_cap_gains_no(self):
+        text = _make_ptr(
+            '                       Loss Corp (LOSS) [ST]                      '
+            'S                 01/15/2024 02/01/2024             $1,001 - $15,000         No'
+        )
+        trades = parse_ptr_text(text)
+        assert len(trades) == 1
+        assert trades[0]['cap_gains_over_200'] is False
+
+    def test_cap_gains_absent(self):
+        text = _make_ptr(
+            '                       None Corp (NONE) [ST]                      '
+            'P                 01/15/2024 02/01/2024             $1,001 - $15,000'
+        )
+        trades = parse_ptr_text(text)
+        assert len(trades) == 1
+        assert trades[0]['cap_gains_over_200'] is None
+
+
+# ---------------------------------------------------------------------------
+# Date validation
+# ---------------------------------------------------------------------------
+
+class TestDateValidation:
+    """Date ordering warnings and invalid dates."""
+
+    def test_date_order_warning(self, caplog):
+        """transaction_date > notification_date logs a warning."""
+        text = _make_ptr(
+            '                       Late Corp (LATE) [ST]                      '
+            'P                 06/15/2024 01/01/2024             $1,001 - $15,000'
+        )
+        with caplog.at_level(logging.WARNING, logger='congressional_trading.parser.ptr_parser'):
+            trades = parse_ptr_text(text)
+        assert len(trades) == 1
+        assert trades[0]['transaction_date'] == '2024-06-15'
+        assert trades[0]['notification_date'] == '2024-01-01'
+        assert any('after notification date' in r.message for r in caplog.records)
+
+    def test_valid_date_order_no_warning(self, caplog):
+        """Normal date ordering produces no warning."""
+        text = _make_ptr(
+            '                       Good Corp (GOOD) [ST]                      '
+            'P                 01/15/2024 02/01/2024             $1,001 - $15,000'
+        )
+        with caplog.at_level(logging.WARNING, logger='congressional_trading.parser.ptr_parser'):
+            trades = parse_ptr_text(text)
+        assert len(trades) == 1
+        date_warnings = [r for r in caplog.records if 'after notification date' in r.message]
+        assert len(date_warnings) == 0
+
+    def test_invalid_date_returns_none(self, caplog):
+        """Malformed date string returns None and logs warning."""
+        text = _make_ptr(
+            '                       Bad Corp (BAD) [ST]                        '
+            'P                 13/45/2024 02/01/2024             $1,001 - $15,000'
+        )
+        with caplog.at_level(logging.WARNING, logger='congressional_trading.parser.ptr_parser'):
+            trades = parse_ptr_text(text)
+        assert len(trades) == 1
+        assert trades[0]['transaction_date'] is None
+        assert any('Invalid date' in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# Amount bracket validation
+# ---------------------------------------------------------------------------
+
+class TestAmountBracketValidation:
+    """Unknown amount brackets log a warning."""
+
+    def test_unknown_bracket_warning(self, caplog):
+        """Non-standard amount range logs a warning."""
+        text = _make_ptr(
+            '                       Weird Corp (WRD) [ST]                      '
+            'P                 01/15/2024 02/01/2024             $5,000 - $10,000'
+        )
+        with caplog.at_level(logging.WARNING, logger='congressional_trading.parser.ptr_parser'):
+            trades = parse_ptr_text(text)
+        assert len(trades) == 1
+        assert trades[0]['amount_range_low'] == 5_000
+        assert trades[0]['amount_range_high'] == 10_000
+        assert any('Unknown amount bracket' in r.message for r in caplog.records)
+
+    def test_known_bracket_no_warning(self, caplog):
+        """Standard amount range produces no warning."""
+        text = _make_ptr(
+            '                       Normal Corp (NRM) [ST]                     '
+            'P                 01/15/2024 02/01/2024             $1,001 - $15,000'
+        )
+        with caplog.at_level(logging.WARNING, logger='congressional_trading.parser.ptr_parser'):
+            trades = parse_ptr_text(text)
+        assert len(trades) == 1
+        bracket_warnings = [r for r in caplog.records if 'Unknown amount bracket' in r.message]
+        assert len(bracket_warnings) == 0
+
+
+# ---------------------------------------------------------------------------
+# Form-feed / multi-page handling
+# ---------------------------------------------------------------------------
+
+class TestMultiPage:
+    """Multi-page PDFs with form-feed characters."""
+
+    def test_form_feed_stripped(self):
+        """Form-feed characters don't break parsing."""
+        fixture = _load_fixture('20024277.txt')
+        # Inject a form-feed in the middle of the transactions section
+        lines = fixture.split('\n')
+        mid = len(lines) // 2
+        lines.insert(mid, '\x0c')
+        text_with_ff = '\n'.join(lines)
+        trades = parse_ptr_text(text_with_ff)
+        # Should still parse the same number of trades
+        assert len(trades) == 4
+
+    def test_form_feed_between_transactions(self):
+        """Form-feed between transactions is stripped and both parse."""
+        text = _make_ptr(
+            '                       Page One Corp (PGON) [ST]                  '
+            'P                 01/15/2024 02/01/2024             $1,001 - $15,000\n'
+            '\n\x0c\n'
+            '                       Page Two Corp (PGTW) [ST]                  '
+            'S                 03/10/2024 04/01/2024             $15,001 - $50,000'
+        )
+        trades = parse_ptr_text(text)
+        assert len(trades) == 2
+        assert trades[0]['ticker'] == 'PGON'
+        assert trades[1]['ticker'] == 'PGTW'
+
+
+# ---------------------------------------------------------------------------
+# S (partial) transaction type
+# ---------------------------------------------------------------------------
+
+class TestPartialSale:
+    """S (partial) transaction type."""
+
+    def test_sale_partial(self):
+        text = _make_ptr(
+            '                       Partial Corp (PRT) [ST]                    '
+            'S (partial)       01/15/2024 02/01/2024             $1,001 - $15,000'
+        )
+        trades = parse_ptr_text(text)
+        assert len(trades) == 1
+        assert trades[0]['transaction_type'] == 'sale_partial'

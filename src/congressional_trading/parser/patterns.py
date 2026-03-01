@@ -8,18 +8,11 @@ import re
 
 TICKER_PATTERN = re.compile(r'\(([A-Z]{1,5})\)')
 ASSET_TYPE_PATTERN = re.compile(r'\[(ST|OP|EF|DC|UT|AH|OT)\]')
-TRANSACTION_PATTERN = re.compile(r'\b(P|S|E)\b')
 PARTIAL_SALE_PATTERN = re.compile(r'S\s*\(partial\)')
-OWNER_PATTERN = re.compile(r'\b(SP|JT|DC)\b')
 DATE_PATTERN = re.compile(r'(\d{2}/\d{2}/\d{4})')
 AMOUNT_PATTERN = re.compile(r'\$([0-9,]+)\s*-?\s*\$([0-9,]+)')
 AMOUNT_OVER_PATTERN = re.compile(r'Over\s+\$([0-9,]+)')
-DESCRIPTION_PATTERN = re.compile(r'[DC]\w*\s*(?::|;)\s*(.+)', re.IGNORECASE)
-CAP_GAINS_PATTERN = re.compile(r'\bcap\w*\s+gains?\b', re.IGNORECASE)
 FILING_ID_PATTERN = re.compile(r'Filing\s+ID\s+#(\d+)')
-
-# Header row pattern to find start of transactions table
-HEADER_PATTERN = re.compile(r'ID\s+Owner\s+Asset')
 
 # --- Constants ---
 
