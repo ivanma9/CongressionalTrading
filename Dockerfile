@@ -13,6 +13,7 @@ COPY src/ src/
 
 ENV DATABASE_PATH=/data/congressional_trades.db
 
-EXPOSE 8000
+ENV PORT=8000
+EXPOSE ${PORT}
 
-CMD ["uv", "run", "uvicorn", "congressional_trading.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD uv run uvicorn congressional_trading.main:app --host 0.0.0.0 --port ${PORT}
