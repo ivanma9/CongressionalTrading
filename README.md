@@ -102,6 +102,7 @@ Runs daily at `SCRAPE_HOUR_UTC` via APScheduler. Includes rate limiting (1s betw
 ## Running Tests
 
 ```bash
+uv pip install -e ".[dev]"
 uv run pytest tests/unit/test_parser.py -v
 ```
 
