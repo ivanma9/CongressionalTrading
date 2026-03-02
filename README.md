@@ -1,6 +1,29 @@
 # Congressional Trading Datastore
 
+[![PyPI version](https://img.shields.io/pypi/v/congressional-trading)](https://pypi.org/project/congressional-trading/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Scrapes, parses, and serves U.S. House financial disclosure (PTR) filings as a REST API with an interactive dashboard.
+
+## Installation
+
+```bash
+pip install congressional-trading
+```
+
+**System dependency:** This package requires `pdftotext` from [Poppler](https://poppler.freedesktop.org/):
+
+```bash
+# macOS
+brew install poppler
+
+# Debian/Ubuntu
+sudo apt-get install poppler-utils
+
+# Fedora
+sudo dnf install poppler-utils
+```
 
 ## Quick Start (Local)
 
@@ -21,27 +44,9 @@ DATABASE_PATH=data/congressional_trades.db uv run uvicorn congressional_trading.
 
 On first startup the scraper runs automatically if no recent scrape exists, pulling filings from 2020 to present.
 
-## Production (Railway)
+## Deployment
 
-Deployed at: `https://congressional-trading-datastore-production-9fd6.up.railway.app`
-
-```bash
-# Prerequisites: Railway CLI, logged in
-brew install railwayapp/tap/railway
-railway login
-
-# Link to the existing project
-railway link --project glorious-mindfulness
-railway service congressional-trading-datastore
-
-# Deploy
-railway up --detach
-
-# Check logs
-railway logs
-```
-
-The production service uses a persistent Railway volume mounted at `/data` for the SQLite database. No environment variable changes needed — the Dockerfile defaults are correct for Railway.
+See [docs/deployment.md](docs/deployment.md) for Railway production deployment instructions.
 
 ### Environment Variables
 
@@ -102,7 +107,6 @@ Runs daily at `SCRAPE_HOUR_UTC` via APScheduler. Includes rate limiting (1s betw
 ## Running Tests
 
 ```bash
-uv pip install -e ".[dev]"
 uv run pytest tests/unit/test_parser.py -v
 ```
 
