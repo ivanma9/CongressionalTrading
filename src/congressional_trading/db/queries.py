@@ -6,6 +6,11 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 
 
+def _today() -> str:
+    """Return today's date as YYYY-MM-DD for use as a future-date ceiling."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
 def get_trades(
     conn: sqlite3.Connection,
     *,
@@ -196,8 +201,8 @@ def get_recent_trades(
     """Get recent trades for chart views, LIMIT 500."""
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
 
-    conditions = ["t.transaction_date >= ?", "t.transaction_date <= '2026-12-31'"]
-    params: list = [cutoff]
+    conditions = ["t.transaction_date >= ?", "t.transaction_date <= ?"]
+    params: list = [cutoff, _today()]
 
     if ticker:
         conditions.append("UPPER(t.ticker) = UPPER(?)")
@@ -250,14 +255,14 @@ def get_trending_tickers(
         FROM trades t
         JOIN filings f ON t.filing_doc_id = f.doc_id
         WHERE t.transaction_date >= ?
-          AND t.transaction_date <= '2026-12-31'
+          AND t.transaction_date <= ?
           AND t.ticker IS NOT NULL
           AND t.ticker != ''
         GROUP BY t.ticker
         ORDER BY total_trades DESC
         LIMIT ?
     """
-    rows = conn.execute(sql, [cutoff, limit]).fetchall()
+    rows = conn.execute(sql, [cutoff, _today(), limit]).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -283,10 +288,10 @@ def get_member_trades_for_performance(
           AND t.ticker IS NOT NULL
           AND t.ticker != ''
           AND t.transaction_date IS NOT NULL
-          AND t.transaction_date <= '2026-12-31'
+          AND t.transaction_date <= ?
         ORDER BY t.transaction_date DESC
     """
-    rows = conn.execute(sql, [f"%{member}%"]).fetchall()
+    rows = conn.execute(sql, [f"%{member}%", _today()]).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -309,10 +314,10 @@ def get_ticker_trades(
         JOIN filings f ON t.filing_doc_id = f.doc_id
         WHERE UPPER(t.ticker) = UPPER(?)
           AND t.transaction_date IS NOT NULL
-          AND t.transaction_date <= '2026-12-31'
+          AND t.transaction_date <= ?
         ORDER BY t.transaction_date DESC
     """
-    rows = conn.execute(sql, [ticker]).fetchall()
+    rows = conn.execute(sql, [ticker, _today()]).fetchall()
     return [dict(r) for r in rows]
 
 
