@@ -9,6 +9,7 @@ from pathlib import Path
 DATABASE_PATH = Path(os.getenv("DATABASE_PATH", "/data/congressional_trades.db"))
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 SCRAPE_HOUR_UTC = int(os.getenv("SCRAPE_HOUR_UTC", "6"))
+SCRAPE_START_YEAR = os.getenv("SCRAPE_START_YEAR", "2020")
 
 # Scraper constants
 HOUSE_BASE_URL = "https://disclosures-clerk.house.gov/public_disc"

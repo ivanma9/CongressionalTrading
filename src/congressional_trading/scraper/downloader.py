@@ -36,9 +36,8 @@ def run_scrape_cycle(conn) -> dict:
     try:
         # Determine which years to scrape
         now = datetime.now(timezone.utc)
-        years = [now.year]
-        if now.month == 1:
-            years.append(now.year - 1)
+        start_year = int(config.SCRAPE_START_YEAR)
+        years = list(range(start_year, now.year + 1))
 
         # Download and parse XML indices
         existing_ids = queries.get_existing_doc_ids(conn)
