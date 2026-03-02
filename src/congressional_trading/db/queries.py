@@ -395,7 +395,7 @@ def update_filing_status(
 def get_pending_filings(conn: sqlite3.Connection) -> list[dict]:
     """Get filings that need processing (pending or retryable errors)."""
     rows = conn.execute(
-        """SELECT doc_id, member_first, member_last, filing_year
+        """SELECT doc_id, member_first, member_last, filing_year, filing_date
            FROM filings
            WHERE status = 'pending'
               OR (status IN ('error', 'parse_error') AND retry_count < ?)

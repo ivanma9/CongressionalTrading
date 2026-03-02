@@ -15,7 +15,7 @@ class TestParserAllen20024277:
     """Test parsing of Richard Allen's PTR filing (4 trades)."""
 
     def setup_method(self):
-        self.trades = parse_ptr_text(_read_fixture("20024277.txt"))
+        self.trades = parse_ptr_text(_read_fixture("20024277.txt"), filing_year=2024)
 
     def test_trade_count(self):
         assert len(self.trades) == 4
@@ -60,7 +60,7 @@ class TestParserGreen20024800:
     """Test parsing of Mark Green's PTR filing (1 trade)."""
 
     def setup_method(self):
-        self.trades = parse_ptr_text(_read_fixture("20024800.txt"))
+        self.trades = parse_ptr_text(_read_fixture("20024800.txt"), filing_year=2024)
 
     def test_trade_count(self):
         assert len(self.trades) == 1
@@ -90,7 +90,7 @@ class TestParserLatta20024901:
     """Test parsing of Robert Latta's PTR filing (1 trade with description)."""
 
     def setup_method(self):
-        self.trades = parse_ptr_text(_read_fixture("20024901.txt"))
+        self.trades = parse_ptr_text(_read_fixture("20024901.txt"), filing_year=2024)
 
     def test_trade_count(self):
         assert len(self.trades) == 1
@@ -117,7 +117,7 @@ class TestParserJackson20025000:
     """Test parsing of Jonathan Jackson's PTR filing (4 trades, joint owner)."""
 
     def setup_method(self):
-        self.trades = parse_ptr_text(_read_fixture("20025000.txt"))
+        self.trades = parse_ptr_text(_read_fixture("20025000.txt"), filing_year=2024)
 
     def test_trade_count(self):
         assert len(self.trades) == 4
@@ -164,7 +164,7 @@ class TestParserEdgeCases:
 
     def test_iso_date_format(self):
         """Verify dates are converted to ISO format."""
-        trades = parse_ptr_text(_read_fixture("20024277.txt"))
+        trades = parse_ptr_text(_read_fixture("20024277.txt"), filing_year=2024)
         for t in trades:
             if t["transaction_date"]:
                 assert len(t["transaction_date"]) == 10
