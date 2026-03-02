@@ -13,3 +13,5 @@ data/
 *.lock
 !uv.lock
 .claude/
+.DS_Store
+*.zip
