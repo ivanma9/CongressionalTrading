@@ -51,7 +51,7 @@ def list_trades(
 
     trades = []
     for r in rows:
-        year = r["filing_id"][:4] if len(r["filing_id"]) >= 4 else ""
+        year = r["filing_year"]
         filing_url = config.PTR_PDF_URL_TEMPLATE.format(year=year, doc_id=r["filing_id"])
         trades.append(TradeResponse(
             filing_url=filing_url,

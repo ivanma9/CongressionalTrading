@@ -58,7 +58,8 @@ def get_trades(
             t.owner,
             t.description,
             t.cap_gains_over_200,
-            t.filing_doc_id AS filing_id
+            t.filing_doc_id AS filing_id,
+            f.filing_year
         FROM trades t
         JOIN filings f ON t.filing_doc_id = f.doc_id
         WHERE {where}

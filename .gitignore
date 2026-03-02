@@ -12,3 +12,4 @@ data/
 .env
 *.lock
 !uv.lock
+.claude/
