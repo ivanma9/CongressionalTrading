@@ -160,7 +160,7 @@ def _process_filing(doc_id: str, year: int) -> list[dict]:
 
     pdf_bytes = _download_pdf(url)
     text = _extract_text(pdf_bytes)
-    return parse_ptr_text(text)
+    return parse_ptr_text(text, filing_year=year)
 
 
 def _download_pdf(url: str) -> bytes:

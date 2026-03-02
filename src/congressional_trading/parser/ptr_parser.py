@@ -34,24 +34,29 @@ _META_LINE_RE = re.compile(
 )
 
 
-def parse_ptr_text(text: str) -> list[dict]:
+def parse_ptr_text(text: str, filing_year: int | None = None) -> list[dict]:
     """Parse raw PTR PDF text into a list of trade dicts.
 
     Args:
         text: Raw text output from `pdftotext -layout` on a PTR PDF.
+        filing_year: Year of the filing, used for date range validation.
+            Defaults to current year if not provided.
 
     Returns:
         List of trade dicts with keys: ticker, asset_description, asset_type,
         transaction_type, owner, transaction_date, notification_date,
         amount_range_low, amount_range_high, description, cap_gains_over_200.
     """
+    if filing_year is None:
+        filing_year = datetime.now().year
+
     # Strip form-feed characters from multi-page PDF output
     text = text.replace('\x0c', '')
 
     blocks = _split_transaction_blocks(text)
     trades = []
     for block in blocks:
-        trade = _parse_block(block)
+        trade = _parse_block(block, filing_year)
         if trade is not None:
             trades.append(trade)
     return trades
@@ -126,7 +131,7 @@ def _is_metadata_group(group: list[str]) -> bool:
     return all(_META_LINE_RE.match(line) for line in group)
 
 
-def _parse_block(block: str) -> Optional[dict]:
+def _parse_block(block: str, filing_year: int) -> Optional[dict]:
     """Parse a single transaction block into a trade dict."""
     lines = block.split('\n')
 
@@ -167,6 +172,10 @@ def _parse_block(block: str) -> Optional[dict]:
     dates = DATE_PATTERN.findall(full_data)
     transaction_date = _convert_date(dates[0]) if len(dates) >= 1 else None
     notification_date = _convert_date(dates[1]) if len(dates) >= 2 else None
+
+    # Validate date ranges
+    transaction_date = _validate_date_range(transaction_date, filing_year, 'transaction_date', ticker)
+    notification_date = _validate_date_range(notification_date, filing_year, 'notification_date', ticker)
 
     # Validate date ordering
     _validate_date_order(transaction_date, notification_date, ticker)
@@ -209,6 +218,43 @@ def _convert_date(date_str: str) -> str | None:
     except ValueError:
         logger.warning("Invalid date: %s", date_str)
         return None
+
+
+def _validate_date_range(
+    date_str: str | None,
+    filing_year: int,
+    field_name: str,
+    ticker: str | None,
+) -> str | None:
+    """Reject dates outside a plausible range; return None for bad dates."""
+    if date_str is None:
+        return None
+
+    year = int(date_str[:4])
+    current_year = datetime.now().year
+
+    if year < 2008:
+        logger.warning(
+            "Rejected %s %s for ticker %s: year %d before STOCK Act (2008)",
+            field_name, date_str, ticker, year,
+        )
+        return None
+
+    if year > current_year + 1:
+        logger.warning(
+            "Rejected %s %s for ticker %s: year %d is in the future",
+            field_name, date_str, ticker, year,
+        )
+        return None
+
+    if year < filing_year - 2:
+        logger.warning(
+            "Rejected %s %s for ticker %s: year %d is >2 years before filing year %d",
+            field_name, date_str, ticker, year, filing_year,
+        )
+        return None
+
+    return date_str
 
 
 def _validate_date_order(

@@ -35,7 +35,7 @@ class TestAllenFiling:
     """Richard Allen filing with 4 spouse-owned trades."""
 
     def setup_method(self):
-        self.trades = parse_ptr_text(_load_fixture('20024277.txt'))
+        self.trades = parse_ptr_text(_load_fixture('20024277.txt'), filing_year=2024)
 
     def test_trade_count(self):
         assert len(self.trades) == 4
@@ -91,7 +91,7 @@ class TestLattaFiling:
     """Robert Latta filing with 1 spouse-owned trade and description."""
 
     def setup_method(self):
-        self.trades = parse_ptr_text(_load_fixture('20024901.txt'))
+        self.trades = parse_ptr_text(_load_fixture('20024901.txt'), filing_year=2024)
 
     def test_trade_count(self):
         assert len(self.trades) == 1
@@ -121,7 +121,7 @@ class TestGreenFiling:
     """Mark Green filing with 1 self-owned trade, multi-line asset name."""
 
     def setup_method(self):
-        self.trades = parse_ptr_text(_load_fixture('20024800.txt'))
+        self.trades = parse_ptr_text(_load_fixture('20024800.txt'), filing_year=2024)
 
     def test_trade_count(self):
         assert len(self.trades) == 1
@@ -152,7 +152,7 @@ class TestJacksonFiling:
     """Jonathan Jackson filing with 4 joint-owned trades."""
 
     def setup_method(self):
-        self.trades = parse_ptr_text(_load_fixture('20025000.txt'))
+        self.trades = parse_ptr_text(_load_fixture('20025000.txt'), filing_year=2024)
 
     def test_trade_count(self):
         assert len(self.trades) == 4
@@ -384,7 +384,7 @@ class TestMultiPage:
         mid = len(lines) // 2
         lines.insert(mid, '\x0c')
         text_with_ff = '\n'.join(lines)
-        trades = parse_ptr_text(text_with_ff)
+        trades = parse_ptr_text(text_with_ff, filing_year=2024)
         # Should still parse the same number of trades
         assert len(trades) == 4
 
@@ -418,3 +418,69 @@ class TestPartialSale:
         trades = parse_ptr_text(text)
         assert len(trades) == 1
         assert trades[0]['transaction_type'] == 'sale_partial'
+
+
+# ---------------------------------------------------------------------------
+# Date range validation
+# ---------------------------------------------------------------------------
+
+class TestDateRangeValidation:
+    """Date range guardrails reject impossible dates."""
+
+    def test_future_date_rejected(self, caplog):
+        """Year 3031 with filing_year=2020 → date becomes None."""
+        text = _make_ptr(
+            '                       Future Corp (FUT) [ST]                     '
+            'P                 01/15/3031 02/01/3031             $1,001 - $15,000'
+        )
+        with caplog.at_level(logging.WARNING, logger='congressional_trading.parser.ptr_parser'):
+            trades = parse_ptr_text(text, filing_year=2020)
+        assert len(trades) == 1
+        assert trades[0]['transaction_date'] is None
+        assert trades[0]['notification_date'] is None
+        assert any('in the future' in r.message for r in caplog.records)
+
+    def test_valid_date_passes(self):
+        """Normal 2020 date with filing_year=2020 passes through."""
+        text = _make_ptr(
+            '                       Valid Corp (VLD) [ST]                      '
+            'P                 06/15/2020 07/01/2020             $1,001 - $15,000'
+        )
+        trades = parse_ptr_text(text, filing_year=2020)
+        assert len(trades) == 1
+        assert trades[0]['transaction_date'] == '2020-06-15'
+        assert trades[0]['notification_date'] == '2020-07-01'
+
+    def test_one_year_before_filing_passes(self):
+        """Date 1 year before filing year is valid (late filing)."""
+        text = _make_ptr(
+            '                       Late Corp (LTE) [ST]                       '
+            'P                 11/15/2019 12/01/2019             $1,001 - $15,000'
+        )
+        trades = parse_ptr_text(text, filing_year=2020)
+        assert len(trades) == 1
+        assert trades[0]['transaction_date'] == '2019-11-15'
+
+    def test_five_years_before_filing_rejected(self, caplog):
+        """Date 5 years before filing year → rejected."""
+        text = _make_ptr(
+            '                       Old Corp (OLD) [ST]                        '
+            'P                 01/15/2015 02/01/2015             $1,001 - $15,000'
+        )
+        with caplog.at_level(logging.WARNING, logger='congressional_trading.parser.ptr_parser'):
+            trades = parse_ptr_text(text, filing_year=2020)
+        assert len(trades) == 1
+        assert trades[0]['transaction_date'] is None
+        assert any('>2 years before filing year' in r.message for r in caplog.records)
+
+    def test_pre_stock_act_rejected(self, caplog):
+        """Year before 2008 → rejected."""
+        text = _make_ptr(
+            '                       Ancient Corp (ANC) [ST]                    '
+            'P                 01/15/2005 02/01/2005             $1,001 - $15,000'
+        )
+        with caplog.at_level(logging.WARNING, logger='congressional_trading.parser.ptr_parser'):
+            trades = parse_ptr_text(text, filing_year=2005)
+        assert len(trades) == 1
+        assert trades[0]['transaction_date'] is None
+        assert any('before STOCK Act' in r.message for r in caplog.records)

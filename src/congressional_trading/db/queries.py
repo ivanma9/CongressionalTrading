@@ -182,6 +182,140 @@ def get_health_stats(conn: sqlite3.Connection) -> dict:
     }
 
 
+# --- Chart query functions ---
+
+
+def get_recent_trades(
+    conn: sqlite3.Connection,
+    *,
+    days: int = 30,
+    member: str | None = None,
+    ticker: str | None = None,
+    transaction_type: str | None = None,
+) -> list[dict]:
+    """Get recent trades for chart views, LIMIT 500."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+
+    conditions = ["t.transaction_date >= ?", "t.transaction_date <= '2026-12-31'"]
+    params: list = [cutoff]
+
+    if ticker:
+        conditions.append("UPPER(t.ticker) = UPPER(?)")
+        params.append(ticker)
+    if member:
+        conditions.append("UPPER(f.member_last) LIKE UPPER(?)")
+        params.append(f"%{member}%")
+    if transaction_type:
+        conditions.append("t.transaction_type = ?")
+        params.append(transaction_type)
+
+    where = " AND ".join(conditions)
+
+    sql = f"""
+        SELECT
+            t.id,
+            f.member_first || ' ' || f.member_last AS member_name,
+            t.ticker,
+            t.transaction_type,
+            t.transaction_date,
+            t.amount_range_low,
+            t.amount_range_high,
+            t.owner
+        FROM trades t
+        JOIN filings f ON t.filing_doc_id = f.doc_id
+        WHERE {where}
+        ORDER BY t.transaction_date DESC
+        LIMIT 500
+    """
+    rows = conn.execute(sql, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_trending_tickers(
+    conn: sqlite3.Connection,
+    *,
+    days: int = 30,
+    limit: int = 20,
+) -> list[dict]:
+    """Get top tickers by trade count with buy/sell breakdown."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+
+    sql = """
+        SELECT
+            t.ticker,
+            COUNT(*) AS total_trades,
+            SUM(CASE WHEN t.transaction_type = 'purchase' THEN 1 ELSE 0 END) AS buys,
+            SUM(CASE WHEN t.transaction_type IN ('sale', 'sale_partial') THEN 1 ELSE 0 END) AS sells,
+            GROUP_CONCAT(DISTINCT f.member_last) AS members
+        FROM trades t
+        JOIN filings f ON t.filing_doc_id = f.doc_id
+        WHERE t.transaction_date >= ?
+          AND t.transaction_date <= '2026-12-31'
+          AND t.ticker IS NOT NULL
+          AND t.ticker != ''
+        GROUP BY t.ticker
+        ORDER BY total_trades DESC
+        LIMIT ?
+    """
+    rows = conn.execute(sql, [cutoff, limit]).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_member_trades_for_performance(
+    conn: sqlite3.Connection,
+    *,
+    member: str,
+) -> list[dict]:
+    """Get all trades with tickers for a member (for performance calc)."""
+    sql = """
+        SELECT
+            t.id,
+            f.member_first || ' ' || f.member_last AS member_name,
+            t.ticker,
+            t.transaction_type,
+            t.transaction_date,
+            t.amount_range_low,
+            t.amount_range_high,
+            t.owner
+        FROM trades t
+        JOIN filings f ON t.filing_doc_id = f.doc_id
+        WHERE UPPER(f.member_last) LIKE UPPER(?)
+          AND t.ticker IS NOT NULL
+          AND t.ticker != ''
+          AND t.transaction_date IS NOT NULL
+          AND t.transaction_date <= '2026-12-31'
+        ORDER BY t.transaction_date DESC
+    """
+    rows = conn.execute(sql, [f"%{member}%"]).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_ticker_trades(
+    conn: sqlite3.Connection,
+    *,
+    ticker: str,
+) -> list[dict]:
+    """Get all congressional trades for a ticker."""
+    sql = """
+        SELECT
+            t.id,
+            f.member_first || ' ' || f.member_last AS member_name,
+            t.transaction_type,
+            t.transaction_date,
+            t.amount_range_low,
+            t.amount_range_high,
+            t.owner
+        FROM trades t
+        JOIN filings f ON t.filing_doc_id = f.doc_id
+        WHERE UPPER(t.ticker) = UPPER(?)
+          AND t.transaction_date IS NOT NULL
+          AND t.transaction_date <= '2026-12-31'
+        ORDER BY t.transaction_date DESC
+    """
+    rows = conn.execute(sql, [ticker]).fetchall()
+    return [dict(r) for r in rows]
+
+
 # --- Write operations for scraper ---
 
 def insert_filing(conn: sqlite3.Connection, filing: dict) -> None:
