@@ -10,6 +10,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
 COPY src/ src/
+COPY static/ static/
 
 ENV DATABASE_PATH=/data/congressional_trades.db
 

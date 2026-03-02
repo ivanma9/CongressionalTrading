@@ -62,6 +62,13 @@ CREATE INDEX IF NOT EXISTS idx_trades_filing_doc_id ON trades(filing_doc_id);
 CREATE INDEX IF NOT EXISTS idx_filings_member_last ON filings(member_last);
 CREATE INDEX IF NOT EXISTS idx_filings_filing_date ON filings(filing_date);
 CREATE INDEX IF NOT EXISTS idx_filings_status ON filings(status);
+
+CREATE TABLE IF NOT EXISTS price_cache (
+    ticker TEXT NOT NULL,
+    date TEXT NOT NULL,
+    close REAL NOT NULL,
+    PRIMARY KEY (ticker, date)
+);
 """
 
 _connection: sqlite3.Connection | None = None

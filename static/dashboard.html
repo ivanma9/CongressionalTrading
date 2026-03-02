@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Congressional Trading Dashboard</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        :root {
+            --bg: #0f1117;
+            --surface: #1a1d27;
+            --surface2: #242736;
+            --border: #2e3144;
+            --text: #e1e4ed;
+            --text-muted: #8b8fa3;
+            --accent: #6366f1;
+            --accent-hover: #818cf8;
+            --green: #22c55e;
+            --red: #ef4444;
+            --amber: #f59e0b;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+        .header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 32px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .header h1 {
+            font-size: 20px;
+            font-weight: 600;
+            letter-spacing: -0.3px;
+        }
+        .header .badge {
+            background: var(--accent);
+            color: white;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-weight: 500;
+        }
+        .tabs {
+            display: flex;
+            gap: 0;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 0 32px;
+        }
+        .tab {
+            padding: 12px 20px;
+            cursor: pointer;
+            color: var(--text-muted);
+            font-size: 14px;
+            font-weight: 500;
+            border-bottom: 2px solid transparent;
+            transition: all 0.15s;
+        }
+        .tab:hover { color: var(--text); }
+        .tab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+        .content { padding: 24px 32px; max-width: 1400px; margin: 0 auto; }
+        .controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        select, input[type="text"] {
+            background: var(--surface2);
+            color: var(--text);
+            border: 1px solid var(--border);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            outline: none;
+        }
+        select:focus, input:focus { border-color: var(--accent); }
+        button {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        button:hover { background: var(--accent-hover); }
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .card h3 {
+            font-size: 14px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+        .stats-row {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .stat {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px 20px;
+            flex: 1;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            margin-top: 4px;
+        }
+        .stat-value.green { color: var(--green); }
+        .stat-value.red { color: var(--red); }
+        .stat-value.amber { color: var(--amber); }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        th {
+            text-align: left;
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-muted);
+            font-weight: 500;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+        }
+        th:hover { color: var(--text); }
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        tr:hover td { background: var(--surface2); }
+        .type-purchase { color: var(--green); font-weight: 600; }
+        .type-sale, .type-sale_partial { color: var(--red); font-weight: 600; }
+        .type-exchange { color: var(--amber); font-weight: 600; }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+        }
+        .chart-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .chart-full { width: 100%; }
+        .panel-layout {
+            display: grid;
+            grid-template-columns: 1fr 340px;
+            gap: 20px;
+        }
+        .side-panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .trade-entry {
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+        }
+        .trade-entry:last-child { border-bottom: none; }
+        .hidden { display: none; }
+        .plotly-chart { min-height: 400px; }
+        @media (max-width: 900px) {
+            .chart-row, .panel-layout { grid-template-columns: 1fr; }
+            .content { padding: 16px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Congressional Trading Dashboard</h1>
+        <span class="badge">BETA</span>
+    </div>
+
+    <div class="tabs">
+        <div class="tab active" data-tab="recent">Recent Activity</div>
+        <div class="tab" data-tab="trending">Trending Tickers</div>
+        <div class="tab" data-tab="member">Member Performance</div>
+        <div class="tab" data-tab="ticker">Ticker Deep Dive</div>
+    </div>
+
+    <!-- Tab 1: Recent Activity -->
+    <div id="tab-recent" class="content">
+        <div class="controls">
+            <label style="color:var(--text-muted);font-size:13px">Window:</label>
+            <select id="recent-days">
+                <option value="3650" selected>All time</option>
+                <option value="30">30 days</option>
+                <option value="60">60 days</option>
+                <option value="90">90 days</option>
+                <option value="180">180 days</option>
+                <option value="365">1 year</option>
+            </select>
+            <input type="text" id="recent-filter" placeholder="Filter by member or ticker..." style="width:220px">
+        </div>
+        <div id="recent-loading" class="loading">Loading recent trades...</div>
+        <div id="recent-content" class="hidden">
+            <div class="card">
+                <h3>Recent Trades</h3>
+                <div style="max-height:400px;overflow-y:auto">
+                    <table id="recent-table">
+                        <thead>
+                            <tr>
+                                <th data-sort="transaction_date">Date</th>
+                                <th data-sort="member_name">Member</th>
+                                <th data-sort="ticker">Ticker</th>
+                                <th data-sort="transaction_type">Type</th>
+                                <th>Amount</th>
+                                <th data-sort="owner">Owner</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="chart-row">
+                <div class="card">
+                    <h3>Most Bought</h3>
+                    <div id="chart-most-bought" class="plotly-chart"></div>
+                </div>
+                <div class="card">
+                    <h3>Most Sold</h3>
+                    <div id="chart-most-sold" class="plotly-chart"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab 2: Trending Tickers -->
+    <div id="tab-trending" class="content hidden">
+        <div class="controls">
+            <label style="color:var(--text-muted);font-size:13px">Window:</label>
+            <select id="trending-days">
+                <option value="3650" selected>All time</option>
+                <option value="30">30 days</option>
+                <option value="60">60 days</option>
+                <option value="90">90 days</option>
+                <option value="180">180 days</option>
+                <option value="365">1 year</option>
+            </select>
+            <label style="color:var(--text-muted);font-size:13px;margin-left:8px">Top:</label>
+            <select id="trending-limit">
+                <option value="10">10</option>
+                <option value="20" selected>20</option>
+                <option value="30">30</option>
+                <option value="50">50</option>
+            </select>
+        </div>
+        <div id="trending-loading" class="loading">Loading trending tickers...</div>
+        <div id="trending-content" class="hidden">
+            <div class="card">
+                <h3>Top Tickers by Trade Volume</h3>
+                <div id="chart-trending" class="plotly-chart" style="min-height:500px"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab 3: Member Performance -->
+    <div id="tab-member" class="content hidden">
+        <div class="controls">
+            <input type="text" id="member-search" placeholder="Search member name (e.g. Pelosi)..." style="width:280px">
+            <button onclick="loadMemberPerformance()">Analyze</button>
+            <label style="color:var(--text-muted);font-size:13px;margin-left:16px">Return window:</label>
+            <select id="member-return-window" onchange="renderMemberChart()">
+                <option value="30">30 days</option>
+                <option value="60">60 days</option>
+                <option value="90">90 days</option>
+            </select>
+        </div>
+        <div id="member-loading" class="loading hidden">Loading member performance (this may take a moment for price data)...</div>
+        <div id="member-empty" class="loading">Enter a member name and click Analyze</div>
+        <div id="member-content" class="hidden">
+            <div class="stats-row" id="member-stats"></div>
+            <div class="card">
+                <h3>Trade Returns Timeline</h3>
+                <p style="color:var(--text-muted);font-size:12px;margin-bottom:12px">
+                    Each dot is one trade. Above 0% = profitable decision. Below 0% = lost money.
+                </p>
+                <div id="chart-member" class="plotly-chart"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab 4: Ticker Deep Dive -->
+    <div id="tab-ticker" class="content hidden">
+        <div class="controls">
+            <input type="text" id="ticker-search" placeholder="Enter ticker (e.g. NVDA)..." style="width:200px">
+            <button onclick="loadTickerActivity()">Analyze</button>
+            <label style="color:var(--text-muted);font-size:13px;margin-left:16px">Window:</label>
+            <select id="ticker-window" onchange="applyTickerWindow()">
+                <option value="all" selected>All time</option>
+                <option value="365">1 year</option>
+                <option value="180">6 months</option>
+                <option value="90">3 months</option>
+                <option value="30">1 month</option>
+            </select>
+        </div>
+        <div id="ticker-loading" class="loading hidden">Loading ticker data (fetching prices)...</div>
+        <div id="ticker-empty" class="loading">Enter a ticker symbol and click Analyze</div>
+        <div id="ticker-content" class="hidden">
+            <div class="panel-layout">
+                <div class="card">
+                    <h3>Price History with Congressional Trades</h3>
+                    <p style="color:var(--text-muted);font-size:12px;margin-bottom:12px">
+                        Dotted yellow line shows how $1 in S&amp;P 500 would have performed over the same period for comparison.
+                    </p>
+                    <div id="chart-ticker" class="plotly-chart" style="min-height:500px"></div>
+                </div>
+                <div class="side-panel">
+                    <h3 style="font-size:14px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">Congressional Trades</h3>
+                    <div id="ticker-trades-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+const API = '/api/v1';
+const PLOTLY_LAYOUT = {
+    paper_bgcolor: '#1a1d27',
+    plot_bgcolor: '#1a1d27',
+    font: { color: '#8b8fa3', size: 12 },
+    margin: { t: 20, r: 20, b: 40, l: 60 },
+    xaxis: { gridcolor: '#2e3144', zerolinecolor: '#2e3144' },
+    yaxis: { gridcolor: '#2e3144', zerolinecolor: '#2e3144' },
+};
+const PLOTLY_CONFIG = { responsive: true, displayModeBar: false };
+
+let recentData = null;
+let memberData = null;
+let tickerData = null;
+
+// --- Tab switching ---
+document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        const name = tab.dataset.tab;
+        document.querySelectorAll('.content').forEach(c => c.classList.add('hidden'));
+        document.getElementById('tab-' + name).classList.remove('hidden');
+        if (name === 'recent' && !recentData) loadRecentTrades();
+        if (name === 'trending') loadTrendingTickers();
+    });
+});
+
+// --- Formatting helpers ---
+function fmtAmount(low, high) {
+    if (!low && !high) return '—';
+    const f = n => '$' + (n || 0).toLocaleString();
+    return f(low) + ' – ' + f(high);
+}
+
+function fmtType(type) {
+    const cls = 'type-' + type;
+    const label = type.replace('_', ' ');
+    return `<span class="${cls}">${label}</span>`;
+}
+
+// --- Tab 1: Recent Activity ---
+async function loadRecentTrades() {
+    const days = document.getElementById('recent-days').value;
+    document.getElementById('recent-loading').classList.remove('hidden');
+    document.getElementById('recent-content').classList.add('hidden');
+
+    try {
+        const resp = await fetch(`${API}/trades/recent?days=${days}`);
+        recentData = await resp.json();
+        renderRecentTrades();
+    } catch (e) {
+        document.getElementById('recent-loading').textContent = 'Error loading trades: ' + e.message;
+    }
+}
+
+function renderRecentTrades() {
+    if (!recentData) return;
+    const filter = document.getElementById('recent-filter').value.toLowerCase();
+    let trades = recentData.trades;
+    if (filter) {
+        trades = trades.filter(t =>
+            (t.member_name || '').toLowerCase().includes(filter) ||
+            (t.ticker || '').toLowerCase().includes(filter)
+        );
+    }
+
+    // Table
+    const tbody = document.querySelector('#recent-table tbody');
+    tbody.innerHTML = trades.map(t => `
+        <tr>
+            <td>${t.transaction_date || '—'}</td>
+            <td>${t.member_name}</td>
+            <td><strong>${t.ticker || '—'}</strong></td>
+            <td>${fmtType(t.transaction_type)}</td>
+            <td>${fmtAmount(t.amount_range_low, t.amount_range_high)}</td>
+            <td>${t.owner}</td>
+        </tr>
+    `).join('');
+
+    // Aggregate for bar charts
+    const buyCounts = {}, sellCounts = {};
+    trades.forEach(t => {
+        if (!t.ticker) return;
+        if (t.transaction_type === 'purchase') {
+            buyCounts[t.ticker] = (buyCounts[t.ticker] || 0) + 1;
+        } else if (t.transaction_type === 'sale' || t.transaction_type === 'sale_partial') {
+            sellCounts[t.ticker] = (sellCounts[t.ticker] || 0) + 1;
+        }
+    });
+
+    const topBuys = Object.entries(buyCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const topSells = Object.entries(sellCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+    Plotly.newPlot('chart-most-bought', [{
+        y: topBuys.map(x => x[0]).reverse(),
+        x: topBuys.map(x => x[1]).reverse(),
+        type: 'bar', orientation: 'h',
+        marker: { color: '#22c55e' },
+    }], { ...PLOTLY_LAYOUT, margin: { ...PLOTLY_LAYOUT.margin, l: 80 } }, PLOTLY_CONFIG);
+
+    Plotly.newPlot('chart-most-sold', [{
+        y: topSells.map(x => x[0]).reverse(),
+        x: topSells.map(x => x[1]).reverse(),
+        type: 'bar', orientation: 'h',
+        marker: { color: '#ef4444' },
+    }], { ...PLOTLY_LAYOUT, margin: { ...PLOTLY_LAYOUT.margin, l: 80 } }, PLOTLY_CONFIG);
+
+    document.getElementById('recent-loading').classList.add('hidden');
+    document.getElementById('recent-content').classList.remove('hidden');
+}
+
+document.getElementById('recent-days').addEventListener('change', loadRecentTrades);
+document.getElementById('recent-filter').addEventListener('input', renderRecentTrades);
+
+// Table sorting
+let sortCol = null, sortAsc = true;
+document.querySelectorAll('#recent-table th[data-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+        const col = th.dataset.sort;
+        if (sortCol === col) sortAsc = !sortAsc;
+        else { sortCol = col; sortAsc = true; }
+        if (recentData) {
+            recentData.trades.sort((a, b) => {
+                const va = a[col] || '', vb = b[col] || '';
+                return sortAsc ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
+            });
+            renderRecentTrades();
+        }
+    });
+});
+
+// --- Tab 2: Trending Tickers ---
+async function loadTrendingTickers() {
+    const days = document.getElementById('trending-days').value;
+    const limit = document.getElementById('trending-limit').value;
+    document.getElementById('trending-loading').classList.remove('hidden');
+    document.getElementById('trending-content').classList.add('hidden');
+
+    try {
+        const resp = await fetch(`${API}/trades/trending?days=${days}&limit=${limit}`);
+        const data = await resp.json();
+        renderTrendingTickers(data);
+    } catch (e) {
+        document.getElementById('trending-loading').textContent = 'Error: ' + e.message;
+    }
+}
+
+function renderTrendingTickers(data) {
+    const tickers = data.tickers.reverse();
+    const buyTrace = {
+        y: tickers.map(t => t.ticker),
+        x: tickers.map(t => t.buys),
+        name: 'Buys',
+        type: 'bar', orientation: 'h',
+        marker: { color: '#22c55e' },
+        hovertemplate: '%{y}: %{x} buys<extra></extra>',
+    };
+    const sellTrace = {
+        y: tickers.map(t => t.ticker),
+        x: tickers.map(t => t.sells),
+        name: 'Sells',
+        type: 'bar', orientation: 'h',
+        marker: { color: '#ef4444' },
+        hovertemplate: '%{y}: %{x} sells<extra></extra>',
+    };
+
+    // Custom hover with members
+    const customData = tickers.map(t => t.members);
+    buyTrace.customdata = customData;
+    buyTrace.hovertemplate = '%{y}: %{x} buys<br>Members: %{customdata}<extra></extra>';
+
+    Plotly.newPlot('chart-trending', [buyTrace, sellTrace], {
+        ...PLOTLY_LAYOUT,
+        barmode: 'stack',
+        margin: { ...PLOTLY_LAYOUT.margin, l: 80 },
+        legend: { font: { color: '#8b8fa3' }, bgcolor: 'transparent' },
+        height: Math.max(400, tickers.length * 28),
+    }, PLOTLY_CONFIG);
+
+    document.getElementById('trending-loading').classList.add('hidden');
+    document.getElementById('trending-content').classList.remove('hidden');
+}
+
+document.getElementById('trending-days').addEventListener('change', loadTrendingTickers);
+document.getElementById('trending-limit').addEventListener('change', loadTrendingTickers);
+
+// --- Tab 3: Member Performance ---
+async function loadMemberPerformance() {
+    const member = document.getElementById('member-search').value.trim();
+    if (!member) return;
+
+    document.getElementById('member-empty').classList.add('hidden');
+    document.getElementById('member-content').classList.add('hidden');
+    document.getElementById('member-loading').classList.remove('hidden');
+
+    try {
+        const resp = await fetch(`${API}/members/${encodeURIComponent(member)}/performance`);
+        memberData = await resp.json();
+        renderMemberChart();
+        document.getElementById('member-loading').classList.add('hidden');
+        document.getElementById('member-content').classList.remove('hidden');
+    } catch (e) {
+        document.getElementById('member-loading').textContent = 'Error: ' + e.message;
+    }
+}
+
+function renderMemberChart() {
+    if (!memberData) return;
+    const window = document.getElementById('member-return-window').value;
+    const retKey = `return_${window}d`;
+    const spyKey = `spy_return_${window}d`;
+
+    const trades = memberData.trades.filter(t => t[retKey] !== null);
+
+    // Stats
+    const statsDiv = document.getElementById('member-stats');
+    const wins = trades.filter(t => t[retKey] > 0).length;
+    const winRate = trades.length ? (wins / trades.length * 100).toFixed(1) : '—';
+    const avgRet = trades.length ? (trades.reduce((s, t) => s + t[retKey], 0) / trades.length).toFixed(2) : '—';
+    const spyTrades = trades.filter(t => t[spyKey] !== null);
+    const avgSpy = spyTrades.length ? (spyTrades.reduce((s, t) => s + t[spyKey], 0) / spyTrades.length).toFixed(2) : '—';
+
+    statsDiv.innerHTML = `
+        <div class="stat">
+            <div class="stat-label">Total Trades</div>
+            <div class="stat-value">${memberData.total_trades}</div>
+        </div>
+        <div class="stat">
+            <div class="stat-label">Win Rate (${window}d)</div>
+            <div class="stat-value ${parseFloat(winRate) >= 50 ? 'green' : 'red'}">${winRate}%</div>
+        </div>
+        <div class="stat">
+            <div class="stat-label">Avg Return (${window}d)</div>
+            <div class="stat-value ${parseFloat(avgRet) >= 0 ? 'green' : 'red'}">${avgRet}%</div>
+        </div>
+        <div class="stat">
+            <div class="stat-label">S&P 500 Avg (${window}d)</div>
+            <div class="stat-value amber">${avgSpy}%</div>
+        </div>
+    `;
+
+    // Scatter
+    const purchases = trades.filter(t => t.transaction_type === 'purchase');
+    const sales = trades.filter(t => t.transaction_type !== 'purchase');
+
+    function tradeHover(t, type) {
+        const ret = Number(t[retKey]);
+        const verb = type === 'buy' ? 'Bought' : 'Sold';
+        const sign = ret > 0 ? '+' : '';
+        const emoji = ret >= 0 ? '✅ Profitable' : '❌ Lost money';
+        return `${verb} ${t.ticker}<br>${sign}${ret}% after ${window} days<br>${emoji}`;
+    }
+
+    const traces = [];
+    if (purchases.length) {
+        traces.push({
+            x: purchases.map(t => t.transaction_date),
+            y: purchases.map(t => Number(t[retKey])),
+            text: purchases.map(t => tradeHover(t, 'buy')),
+            mode: 'markers',
+            type: 'scatter',
+            name: 'Buys',
+            marker: { color: '#22c55e', size: 10, opacity: 0.8 },
+            hovertemplate: '%{text}<extra></extra>',
+        });
+    }
+    if (sales.length) {
+        traces.push({
+            x: sales.map(t => t.transaction_date),
+            y: sales.map(t => Number(t[retKey])),
+            text: sales.map(t => tradeHover(t, 'sell')),
+            mode: 'markers',
+            type: 'scatter',
+            name: 'Sells',
+            marker: { color: '#ef4444', size: 10, symbol: 'diamond', opacity: 0.8 },
+            hovertemplate: '%{text}<extra></extra>',
+        });
+    }
+
+    // Get date range for reference lines
+    const allDates = trades.map(t => t.transaction_date).sort();
+    const minDate = allDates[0];
+    const maxDate = allDates[allDates.length - 1];
+
+    // SPY benchmark line
+    if (avgSpy !== '—') {
+        traces.push({
+            x: [minDate, maxDate],
+            y: [parseFloat(avgSpy), parseFloat(avgSpy)],
+            mode: 'lines',
+            name: `S&P 500 avg (${avgSpy}%)`,
+            line: { color: '#f59e0b', dash: 'dash', width: 2 },
+        });
+    }
+    // Zero line
+    traces.push({
+        x: [minDate, maxDate],
+        y: [0, 0],
+        mode: 'lines',
+        name: 'Break even',
+        line: { color: '#4b5563', dash: 'dot', width: 1 },
+        showlegend: false,
+    });
+
+    Plotly.newPlot('chart-member', traces, {
+        ...PLOTLY_LAYOUT,
+        xaxis: { ...PLOTLY_LAYOUT.xaxis, type: 'date' },
+        yaxis: { ...PLOTLY_LAYOUT.yaxis, type: 'linear', title: `Return (${window}d) %`, ticksuffix: '%' },
+        legend: { font: { color: '#8b8fa3' }, bgcolor: 'transparent' },
+    }, PLOTLY_CONFIG);
+}
+
+document.getElementById('member-search').addEventListener('keydown', e => {
+    if (e.key === 'Enter') loadMemberPerformance();
+});
+
+// --- Tab 4: Ticker Deep Dive ---
+async function loadTickerActivity() {
+    const ticker = document.getElementById('ticker-search').value.trim().toUpperCase();
+    if (!ticker) return;
+
+    document.getElementById('ticker-empty').classList.add('hidden');
+    document.getElementById('ticker-content').classList.add('hidden');
+    document.getElementById('ticker-loading').classList.remove('hidden');
+
+    try {
+        const resp = await fetch(`${API}/tickers/${encodeURIComponent(ticker)}/activity`);
+        tickerData = await resp.json();
+        applyTickerWindow();
+        document.getElementById('ticker-loading').classList.add('hidden');
+        document.getElementById('ticker-content').classList.remove('hidden');
+    } catch (e) {
+        document.getElementById('ticker-loading').textContent = 'Error: ' + e.message;
+    }
+}
+
+function applyTickerWindow() {
+    if (!tickerData) return;
+    const windowVal = document.getElementById('ticker-window').value;
+
+    if (windowVal === 'all') {
+        renderTickerActivity(tickerData);
+        return;
+    }
+
+    const days = parseInt(windowVal);
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+
+    // For windowed view, use the latest data as the end reference
+    // Find the max date in prices, then go back N days
+    const maxDate = tickerData.prices.length ? tickerData.prices[tickerData.prices.length - 1].date : '';
+    const maxDt = new Date(maxDate);
+    maxDt.setDate(maxDt.getDate() - days);
+    const windowStart = maxDt.toISOString().slice(0, 10);
+
+    const filtered = {
+        ticker: tickerData.ticker,
+        prices: tickerData.prices.filter(p => p.date >= windowStart),
+        spy_prices: tickerData.spy_prices.filter(p => p.date >= windowStart),
+        trades: tickerData.trades.filter(t => t.date >= windowStart),
+    };
+    renderTickerActivity(filtered);
+}
+
+function renderTickerActivity(data) {
+    if (!data.prices.length) {
+        document.getElementById('ticker-loading').textContent = 'No price data available for ' + data.ticker;
+        document.getElementById('ticker-loading').classList.remove('hidden');
+        document.getElementById('ticker-content').classList.add('hidden');
+        return;
+    }
+
+    // Normalize SPY to same starting price
+    const startPrice = data.prices[0].close;
+    const spyStart = data.spy_prices.length ? data.spy_prices[0].close : 1;
+    const spyNormalized = data.spy_prices.map(p => ({
+        date: p.date,
+        close: (p.close / spyStart) * startPrice,
+    }));
+
+    const traces = [
+        {
+            x: data.prices.map(p => p.date),
+            y: data.prices.map(p => Number(p.close)),
+            type: 'scatter',
+            mode: 'lines',
+            name: data.ticker,
+            line: { color: '#6366f1', width: 2 },
+        },
+        {
+            x: spyNormalized.map(p => p.date),
+            y: spyNormalized.map(p => Number(p.close)),
+            type: 'scatter',
+            mode: 'lines',
+            name: 'S&P 500 (same starting price)',
+            line: { color: '#f59e0b', width: 1.5, dash: 'dot' },
+        },
+    ];
+
+    // Buy markers
+    const buys = data.trades.filter(t => t.transaction_type === 'purchase');
+    const sells = data.trades.filter(t => t.transaction_type !== 'purchase');
+
+    // Find price on trade date for marker placement
+    const priceMap = {};
+    data.prices.forEach(p => { priceMap[p.date] = p.close; });
+
+    function nearestPrice(date) {
+        if (priceMap[date]) return priceMap[date];
+        const dates = Object.keys(priceMap).sort();
+        for (let i = dates.length - 1; i >= 0; i--) {
+            if (dates[i] <= date) return priceMap[dates[i]];
+        }
+        return null;
+    }
+
+    if (buys.length) {
+        traces.push({
+            x: buys.map(t => t.date),
+            y: buys.map(t => Number(nearestPrice(t.date))),
+            text: buys.map(t => `BUY: ${t.member_name}<br>${fmtAmount(t.amount_range_low, t.amount_range_high)}`),
+            type: 'scatter',
+            mode: 'markers',
+            name: 'Congressional Buys',
+            marker: { color: '#22c55e', size: 12, symbol: 'triangle-up' },
+            hovertemplate: '%{text}<br>%{x}<extra></extra>',
+        });
+    }
+    if (sells.length) {
+        traces.push({
+            x: sells.map(t => t.date),
+            y: sells.map(t => Number(nearestPrice(t.date))),
+            text: sells.map(t => `SELL: ${t.member_name}<br>${fmtAmount(t.amount_range_low, t.amount_range_high)}`),
+            type: 'scatter',
+            mode: 'markers',
+            name: 'Congressional Sells',
+            marker: { color: '#ef4444', size: 12, symbol: 'triangle-down' },
+            hovertemplate: '%{text}<br>%{x}<extra></extra>',
+        });
+    }
+
+    Plotly.newPlot('chart-ticker', traces, {
+        ...PLOTLY_LAYOUT,
+        xaxis: { ...PLOTLY_LAYOUT.xaxis, type: 'date' },
+        yaxis: { ...PLOTLY_LAYOUT.yaxis, type: 'linear', title: 'Price ($)', tickprefix: '$' },
+        legend: { font: { color: '#8b8fa3' }, bgcolor: 'transparent' },
+        hovermode: 'x unified',
+    }, PLOTLY_CONFIG);
+
+    // Side panel
+    const listDiv = document.getElementById('ticker-trades-list');
+    listDiv.innerHTML = data.trades.map(t => `
+        <div class="trade-entry">
+            <div style="font-weight:600">${t.member_name}</div>
+            <div>${fmtType(t.transaction_type)} &middot; ${t.date}</div>
+            <div style="color:var(--text-muted)">${fmtAmount(t.amount_range_low, t.amount_range_high)}</div>
+        </div>
+    `).join('') || '<div style="color:var(--text-muted)">No trades found</div>';
+}
+
+document.getElementById('ticker-search').addEventListener('keydown', e => {
+    if (e.key === 'Enter') loadTickerActivity();
+});
+
+// --- Auto-load first tab ---
+loadRecentTrades();
+</script>
+</body>
+</html>
